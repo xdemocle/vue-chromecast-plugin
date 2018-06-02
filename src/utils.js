@@ -11,7 +11,7 @@ class Events {
         emit(event, ...args) {
           this.$emit(event, ...args);
         },
-    
+
         /**
          * Listen for the given event.
          *
@@ -21,7 +21,7 @@ class Events {
         on(event, callback) {
           this.$on(event, callback);
         },
-    
+
         /**
          * Remove one or more event listeners.
          *
@@ -32,7 +32,7 @@ class Events {
           this.$off(event, callback);
         }
       }
-    })
+    });
   }
 }
 
@@ -41,12 +41,3 @@ function checkIfChromecast() {
 }
 
 export default { Events, checkIfChromecast };
-
-// export default class Cat {
-//   constructor() {
-//     this._name = 'Cat';
-//   }
-//   get name() {
-//     return this._name;
-//   }
-// }

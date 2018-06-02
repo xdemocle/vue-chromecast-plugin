@@ -7,8 +7,6 @@ class Sender {
     this.session = null;
     this.params = params;
 
-    debugger
-
     this.initialize();
   }
 
@@ -16,7 +14,7 @@ class Sender {
     if (!chrome.cast || !chrome.cast.isAvailable) {
       setTimeout(() => {
         this.constructor(this.params);
-      }, 1000);
+      }, 150);
       return;
     }
 
@@ -24,18 +22,22 @@ class Sender {
 
     this.apiConfig = new chrome.cast.ApiConfig(
       this.sessionRequest,
-      this.sessionListener,
-      this.availabilityListener
+      () => this.sessionListener,
+      () => this.availabilityListener
     );
 
-    chrome.cast.initialize(this.apiConfig, this.onInitSuccess, this.onError);
+    chrome.cast.initialize(
+      this.apiConfig,
+      () => this.onInitSuccess,
+      () => this.onError
+    );
   }
 
-  onInitSuccess = (e) => {
+  onInitSuccess(e) {
     this.$events.$emit('onInitSuccess', e);
   }
 
-  onError = (message) => {
+  onError(message) {
     this.log(`onError: ${JSON.stringify(message)}`);
 
     if (message.code) {
@@ -43,7 +45,7 @@ class Sender {
     }
   }
 
-  onSuccess = (message) => {
+  onSuccess(message) {
     this.log(`onSuccess: ${JSON.stringify(message)}`);
 
     if (message.callback) {
@@ -51,16 +53,17 @@ class Sender {
     }
   }
 
-  sessionListener = (e) => {
+  sessionListener(e) {
     this.log(`New session ID: ${e.sessionId}`);
     this.session = e;
-    this.session.addUpdateListener(this.sessionUpdateListener);
+    this.session.addUpdateListener(() => this.sessionUpdateListener);
 
     this.$events.$emit('sessionUpdate', 'new');
   }
 
-  sessionUpdateListener = (isAlive) => {
+  sessionUpdateListener(isAlive) {
     const sessionStatus = isAlive ? 'updated' : 'removed';
+
     this.log(`Session ${sessionStatus}: ${this.session.sessionId}`);
 
     if (!isAlive) {
@@ -70,11 +73,11 @@ class Sender {
     this.$events.$emit('sessionUpdate', sessionStatus);
   }
 
-  availabilityListener = (e) => {
+  availabilityListener(e) {
     this.$events.$emit('availabilityListener', e);
   }
 
-  sendMessage = (message) => {
+  sendMessage(message) {
     if (this.session !== null) {
       this.session.sendMessage(
         this.params.applicationNamespace,
@@ -96,11 +99,11 @@ class Sender {
     }
   }
 
-  cast = (callback) => {
+  cast(callback) {
     this.sendMessage({ callback });
   }
 
-  stopCasting = (callback) => {
+  stopCasting(callback) {
     if (this.session) {
       this.session.stop(callback, this.onError);
     } else if (callback) {
@@ -120,7 +123,7 @@ class Receiver {
     if (!cast || !cast.receiver) {
       setTimeout(() => {
         this.constructor();
-      }, 1000);
+      }, 150);
       return;
     }
 

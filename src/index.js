@@ -1,4 +1,3 @@
-/* eslint no-param-reassign: ["error", { "props": false }] */
 import Utils from './utils';
 import { Sender, Receiver } from './chromecast-sdk';
 
@@ -12,8 +11,6 @@ export default {
     Sender.prototype.$events = VueEvents.$events;
     Receiver.prototype.$events = VueEvents.$events;
 
-    debugger
-
     if (Utils.checkIfChromecast()) {
       $chromecast.Receiver = new Receiver({
         applicationName,
@@ -26,11 +23,9 @@ export default {
       });
     }
 
-    // $chromecast.$on = (eventName, eventHandler) => {
-    //   Events.$events.$on(eventName, eventHandler);
-    // };
-
-    // $chromecast.$on = VueEvents.$events.$on;
+    $chromecast.$on = (eventName, eventHandler) => {
+      VueEvents.$events.$on(eventName, eventHandler);
+    };
 
     // Register the vue plugin
     Vue.prototype.$chromecast = $chromecast;

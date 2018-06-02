@@ -6,28 +6,12 @@ Vue ChromeCast plugin is a simple library using Google ChromeCast Web SDK to cas
 
 ## Features
 
+* Webpack starter-kit based to [krasimir/webpack-library-starter](https://github.com/krasimir/webpack-library-starter)
 * Webpack 3 based.
 * ES6 as a source.
 * Exports in a [umd](https://github.com/umdjs/umd) format so your library works everywhere.
 * ES6 test setup with [Mocha](http://mochajs.org/) and [Chai](http://chaijs.com/).
 * Linting with [ESLint](http://eslint.org/).
-
-## Process
-
-```
-ES6 source files
-       |
-       |
-    webpack
-       |
-       +--- babel, eslint
-       |
-  ready to use
-     library
-  in umd format
-```
-
-*Have in mind that you have to build your library before publishing. The files under the `lib` folder are the ones that should be distributed.*
 
 ## Getting started
 
