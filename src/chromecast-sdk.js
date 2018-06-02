@@ -7,7 +7,11 @@ class Sender {
     this.session = null;
     this.params = params;
 
-    this.initialize();
+    // If isn't a google chrome browser, obviously don't even try to start
+    // ChromeCast Web SDK.
+    if (chrome) {
+      this.initialize();
+    }
   }
 
   initialize() {
@@ -22,14 +26,14 @@ class Sender {
 
     this.apiConfig = new chrome.cast.ApiConfig(
       this.sessionRequest,
-      () => this.sessionListener,
-      () => this.availabilityListener
+      (e) => this.sessionListener(e),
+      (e) => this.availabilityListener(e)
     );
 
     chrome.cast.initialize(
       this.apiConfig,
-      () => this.onInitSuccess,
-      () => this.onError
+      (e) => this.onInitSuccess(e),
+      (e) => this.onError(e)
     );
   }
 
@@ -39,6 +43,11 @@ class Sender {
 
   onError(message) {
     this.log(`onError: ${JSON.stringify(message)}`);
+
+    // Erase the local session in case mismatch with the receiver
+    if (message.code === 'invalid_parameter' || message.code === 'timeout') {
+      this.session = null;
+    }
 
     if (message.code) {
       this.$events.$emit('sessionUpdate', message.code);
@@ -56,7 +65,7 @@ class Sender {
   sessionListener(e) {
     this.log(`New session ID: ${e.sessionId}`);
     this.session = e;
-    this.session.addUpdateListener(() => this.sessionUpdateListener);
+    this.session.addUpdateListener((e) => this.sessionUpdateListener);
 
     this.$events.$emit('sessionUpdate', 'new');
   }
@@ -82,32 +91,55 @@ class Sender {
       this.session.sendMessage(
         this.params.applicationNamespace,
         message,
-        this.onSuccess.bind(this, message),
-        this.onError
+        () => this.onSuccess(message),
+        (e) => this.onError(e)
       );
     } else {
       chrome.cast.requestSession((e) => {
         this.session = e;
         this.sessionListener(e);
+
         this.session.sendMessage(
           this.params.applicationNamespace,
           message,
-          this.onSuccess.bind(this, message),
-          this.onError
+          () => this.onSuccess(message),
+          (e) => this.onError(e)
         );
-      }, this.onError);
+
+      }, (e) => this.onError(e));
     }
   }
 
   cast(callback) {
-    this.sendMessage({ callback });
+    // If isn't a google chrome browser, obviously don't even try
+    if (chrome) {
+      this.sendMessage({ callback });
+      this.$events.$emit('sessionUpdate', 'connecting');
+    }
   }
 
   stopCasting(callback) {
+    // If isn't a google chrome browser, obviously don't even try
+    if (!chrome) {
+      return;
+    }
+
+    this.$events.$emit('sessionUpdate', 'disconnecting');
+
+    // Ugly piece shit of code below, but we need to listen any case during
+    // disconnection in order to provide a rapid and certain connection
+    // from the UI.
     if (this.session) {
-      this.session.stop(callback, this.onError);
+      this.session.stop((e) => {
+        this.session = null;
+        if (callback) {
+          callback(e);
+        }
+        this.$events.$emit('sessionUpdate', 'disconnected');
+      }, (e) => this.onError(e));
     } else if (callback) {
       callback();
+      this.$events.$emit('sessionUpdate', 'disconnected');
     }
   }
 }
