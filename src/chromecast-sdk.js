@@ -1,4 +1,3 @@
-const { chrome, cast } = window;
 const { log } = console;
 
 class Sender {
@@ -9,32 +8,69 @@ class Sender {
 
     // If isn't a google chrome browser, obviously don't even try to start
     // ChromeCast Web SDK.
-    if (chrome) {
-      this.initialize();
+    if (window.chrome) {
+      this.loadScript();
+
+      window['__onGCastApiAvailable'] = (isAvailable) => {
+        if (isAvailable) {
+          this.initialize();
+        }
+      };
     }
   }
 
+  loadScript() {
+    // Inject chromecast script
+    const castScript = document.createElement('script');
+
+    castScript.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js' +
+      '?loadCastFramework=1';
+    document.getElementsByTagName('head')[0].appendChild(castScript);
+  }
+
   initialize() {
-    if (!chrome.cast || !chrome.cast.isAvailable) {
-      setTimeout(() => {
-        this.constructor(this.params);
-      }, 150);
+    if (!window.cast || !window.cast.framework) {
+      setTimeout(() => this.initialize(), 150);
       return;
     }
 
-    this.sessionRequest = new chrome.cast.SessionRequest(this.params.applicationId);
+    const { cast } = window;
 
-    this.apiConfig = new chrome.cast.ApiConfig(
-      this.sessionRequest,
-      (e) => this.sessionListener(e),
-      (e) => this.availabilityListener(e)
-    );
+    const context = cast.framework.CastContext.getInstance();
 
-    chrome.cast.initialize(
-      this.apiConfig,
-      (e) => this.onInitSuccess(e),
-      (e) => this.onError(e)
-    );
+    // Set Cast options
+    context.setOptions({
+      receiverApplicationId: this.params.applicationId,
+      // autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+      autoJoinPolicy: 'origin_scoped',
+      language: 'en'
+    });
+
+    this.sessionRequest = context.requestSession();
+
+    this.sessionRequest
+      .then((e) => {
+        debugger
+      })
+      .catch((e) => {
+        debugger
+      });
+
+    // this.sessionRequest = new chrome.cast.SessionRequest(this.params.applicationId);
+
+    // // DELETED
+    // this.apiConfig = new chrome.cast.ApiConfig(
+    //   this.sessionRequest,
+    //   (e) => this.sessionListener(e),
+    //   (e) => this.availabilityListener(e)
+    // );
+
+    // // DELETED
+    // chrome.cast.initialize(
+    //   this.apiConfig,
+    //   (e) => this.onInitSuccess(e),
+    //   (e) => this.onError(e)
+    // );
   }
 
   onInitSuccess(e) {
@@ -83,6 +119,7 @@ class Sender {
   }
 
   availabilityListener(e) {
+    console.log('availabilityListener', e);
     this.$events.$emit('availabilityListener', e);
   }
 
@@ -148,51 +185,81 @@ class Receiver {
   constructor(params) {
     this.log = log;
     this.params = params;
+
+    this.loadScript();
     this.initialize();
   }
 
+  loadScript() {
+    // Inject chromecast script
+    const castScript = document.createElement('script');
+
+    castScript.src = '//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/' +
+      'cast_receiver_framework.js';
+    document.getElementsByTagName('head')[0].appendChild(castScript);
+  }
+
   initialize() {
-    if (!cast || !cast.receiver) {
-      setTimeout(() => {
-        this.constructor();
-      }, 150);
+    if (!window.cast || !window.cast.framework.CastReceiverContext) {
+      setTimeout(this.initialize.bind(this), 150);
       return;
     }
 
-    cast.receiver.logger.setLevelValue(0);
+    const { cast } = window;
 
-    this.castReceiverManager = cast.receiver.CastReceiverManager.getInstance();
+    const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager();
 
-    this.log('Starting Receiver Manager');
+    // intercept the LOAD request to be able to read in a contentId and get data
+    playerManager.setMessageInterceptor(
+      cast.framework.messages.MessageType.LOAD, loadRequestData => {
+        debugger;
+        if (loadRequestData.media && loadRequestData.media.contentId) {
+          debugger;
+        }
+        return loadRequestData;
+      });
 
-    this.castReceiverManager.onReady = (event) => {
-      this.log(`Received Ready event: ${JSON.stringify(event.data)}`);
-      this.castReceiverManager.setApplicationState(`${this.params.applicationName} is ready...`);
-    };
+    // listen to all Core Events
+    playerManager.addEventListener(cast.framework.events.category.CORE,
+      event => {
+        console.log(event);
+      });
 
-    this.castReceiverManager.onSenderConnected = (event) => {
-      this.log(`Received Sender Connected event: ${event.senderId}`);
-    };
+    debugger
 
-    this.castReceiverManager.onSenderDisconnected = (event) => {
-      this.log(`Received Sender Disconnected event: ${event.senderId}`);
-    };
+    // this.castReceiverManager = cast.receiver.CastReceiverManager.getInstance();
 
-    this.messageBus = this.castReceiverManager.getCastMessageBus(
-      this.params.applicationNamespace,
-      cast.receiver.CastMessageBus.MessageType.JSON
-    );
+    // this.log('Starting Receiver Manager');
 
-    this.messageBus.onMessage = (event) => {
-      this.log(`Message [${event.senderId}]: ${event.data}`);
+    // this.castReceiverManager.onReady = (event) => {
+    //   this.log(`Received Ready event: ${JSON.stringify(event.data)}`);
+    //   this.castReceiverManager.setApplicationState(`${this.params.applicationName} is ready...`);
+    // };
 
-      if (event.data.method) {
-        this.$events.$emit('message', JSON.stringify(event.data));
-      }
-    };
+    // this.castReceiverManager.onSenderConnected = (event) => {
+    //   this.log(`Received Sender Connected event: ${event.senderId}`);
+    // };
+
+    // this.castReceiverManager.onSenderDisconnected = (event) => {
+    //   this.log(`Received Sender Disconnected event: ${event.senderId}`);
+    // };
+
+    // this.messageBus = this.castReceiverManager.getCastMessageBus(
+    //   this.params.applicationNamespace,
+    //   cast.receiver.CastMessageBus.MessageType.JSON
+    // );
+
+    // this.messageBus.onMessage = (event) => {
+    //   this.log(`Message [${event.senderId}]: ${event.data}`);
+
+    //   if (event.data.method) {
+    //     this.$events.$emit('message', JSON.stringify(event.data));
+    //   }
+    // };
 
     // Initialize the CastReceiverManager with an application status message.
-    this.castReceiverManager.start({ statusText: 'Application is starting' });
+    // this.castReceiverManager.start({ statusText: 'Application is starting' });
 
     this.log('Receiver Manager started');
   }
