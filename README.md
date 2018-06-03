@@ -4,6 +4,10 @@ Vue ChromeCast plugin is a simple library using Google ChromeCast Web SDK to cas
 
 ![Travis](https://travis-ci.org/xdemocle/vue-chromecast-plugin.svg?branch=master)
 
+## WARNING
+
+Vue ChromeCast plugin currently is using the deprecated SDK of ChromeCast, new ChromeCast API will be used soon in this plugin and more details on usage and installation will be also added in this README.
+
 ## Features
 
 * Webpack starter-kit based to [krasimir/webpack-library-starter](https://github.com/krasimir/webpack-library-starter)
