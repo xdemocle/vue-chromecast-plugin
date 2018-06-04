@@ -185,10 +185,10 @@ class Receiver {
 
     const { cast } = window;
 
-    const options = new cast.framework.CastReceiverOptions();
-
+    // const options = new cast.framework.CastReceiverOptions();
+    //
     // Set inactivity at 60 minutes if option maxInactivity is not passed
-    options.maxInactivity = this.params.maxInactivity || 3600000;
+    // options.maxInactivity = this.params.maxInactivity || 3600000;
 
     const context = cast.framework.CastReceiverContext.getInstance();
 
@@ -202,7 +202,10 @@ class Receiver {
       this.log(`Message [${customEvent.senderId}]: ${dataStringified}`);
     });
 
-    context.start(options);
+    // Set inactivity at 6 hours if option maxInactivity is not passed
+    context.setInactivityTimeout(this.params.maxInactivity || 21600000);
+
+    context.start();
   }
 }
 
