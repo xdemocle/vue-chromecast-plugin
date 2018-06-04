@@ -4,7 +4,6 @@ import { Sender, Receiver } from './chromecast-sdk';
 export default {
   install(Vue, options) {
     const $chromecast = {};
-    const { applicationId, applicationName, applicationNamespace } = options;
 
     const VueEvents = new Utils.Events(Vue);
 
@@ -12,15 +11,9 @@ export default {
     Receiver.prototype.$events = VueEvents.$events;
 
     if (Utils.checkIfChromecast()) {
-      $chromecast.Receiver = new Receiver({
-        applicationName,
-        applicationNamespace
-      });
+      $chromecast.Receiver = new Receiver(options);
     } else {
-      $chromecast.Sender = new Sender({
-        applicationId,
-        applicationNamespace
-      });
+      $chromecast.Sender = new Sender(options);
     }
 
     $chromecast.$on = (eventName, eventHandler) => {

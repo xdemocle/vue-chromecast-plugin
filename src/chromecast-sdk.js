@@ -29,154 +29,132 @@ class Sender {
   }
 
   initialize() {
-    if (!window.cast || !window.cast.framework) {
-      setTimeout(() => this.initialize(), 150);
+    this.chrome = window.chrome;
+    this.cast = window.cast;
+
+    if (!this.cast || !this.cast.framework) {
+      setTimeout(this.initialize.bind(this), 150);
       return;
     }
 
-    const { cast } = window;
+    this.context = this.cast.framework.CastContext.getInstance();
 
-    const context = cast.framework.CastContext.getInstance();
+    this.cast.framework.setLoggerLevel(0);
 
     // Set Cast options
-    context.setOptions({
-      receiverApplicationId: this.params.applicationId,
-      // autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
-      autoJoinPolicy: 'origin_scoped',
+    this.context.setOptions({
+      receiverApplicationId: this.params.appId,
+      autoJoinPolicy: this.chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
       language: 'en'
     });
 
-    this.sessionRequest = context.requestSession();
+    this.context.addEventListener(
+      this.cast.framework.CastContextEventType.CAST_STATE_CHANGED,
+      (response) => this.stateChangedHandler(response)
+    );
 
-    this.sessionRequest
-      .then((e) => {
-        debugger
-      })
-      .catch((e) => {
-        debugger
-      });
-
-    // this.sessionRequest = new chrome.cast.SessionRequest(this.params.applicationId);
-
-    // // DELETED
-    // this.apiConfig = new chrome.cast.ApiConfig(
-    //   this.sessionRequest,
-    //   (e) => this.sessionListener(e),
-    //   (e) => this.availabilityListener(e)
-    // );
-
-    // // DELETED
-    // chrome.cast.initialize(
-    //   this.apiConfig,
-    //   (e) => this.onInitSuccess(e),
-    //   (e) => this.onError(e)
-    // );
+    this.context.addEventListener(
+      this.cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
+      (response) => this.stateChangedHandler(response)
+    );
   }
 
-  onInitSuccess(e) {
-    this.$events.$emit('onInitSuccess', e);
+  requestSession(callback) {
+    this.context.requestSession().then(() => {
+      if (callback) {
+        callback();
+      }
+    });
   }
 
-  onError(message) {
-    this.log(`onError: ${JSON.stringify(message)}`);
-
-    // Erase the local session in case mismatch with the receiver
-    if (message.code === 'invalid_parameter' || message.code === 'timeout') {
+  stateChangedHandler(response) {
+    if (response.sessionState === 'SESSION_ENDED') {
       this.session = null;
     }
 
-    if (message.code) {
-      this.$events.$emit('sessionUpdate', message.code);
-    }
-  }
-
-  onSuccess(message) {
-    this.log(`onSuccess: ${JSON.stringify(message)}`);
-
-    if (message.callback) {
-      message.callback();
-    }
-  }
-
-  sessionListener(e) {
-    this.log(`New session ID: ${e.sessionId}`);
-    this.session = e;
-    this.session.addUpdateListener((e) => this.sessionUpdateListener);
-
-    this.$events.$emit('sessionUpdate', 'new');
-  }
-
-  sessionUpdateListener(isAlive) {
-    const sessionStatus = isAlive ? 'updated' : 'removed';
-
-    this.log(`Session ${sessionStatus}: ${this.session.sessionId}`);
-
-    if (!isAlive) {
-      this.session = null;
+    if (response.sessionState === 'SESSION_RESUMED' ||
+        response.sessionState === 'SESSION_STARTED') {
+      this.session = response.session.getSessionObj();
     }
 
-    this.$events.$emit('sessionUpdate', sessionStatus);
-  }
+    if (response.sessionState) {
+      this.$events.$emit(response.type, response.sessionState);
+    }
 
-  availabilityListener(e) {
-    console.log('availabilityListener', e);
-    this.$events.$emit('availabilityListener', e);
+    if (response.type === 'sessionstatechanged') {
+      this.log(`[SESSION] ${response.sessionState}: ${this.session && this.session.sessionId}`);
+    } else {
+      this.log(`[DEBUG] ${response.type}: ${JSON.stringify(response)}`);
+    }
   }
 
   sendMessage(message) {
-    if (this.session !== null) {
+    if (this.session) {
       this.session.sendMessage(
-        this.params.applicationNamespace,
+        this.params.appNamespace,
         message,
-        () => this.onSuccess(message),
-        (e) => this.onError(e)
+        () => this.onMessageSuccess(message),
+        (e) => this.onMessageError(e)
       );
     } else {
-      chrome.cast.requestSession((e) => {
-        this.session = e;
-        this.sessionListener(e);
-
+      this.requestSession(() => {
         this.session.sendMessage(
-          this.params.applicationNamespace,
+          this.params.appNamespace,
           message,
-          () => this.onSuccess(message),
-          (e) => this.onError(e)
+          () => this.onMessageSuccess(message),
+          (e) => this.onMessageError(e)
         );
-
-      }, (e) => this.onError(e));
+      });
     }
   }
 
-  cast(callback) {
+  casting(callback) {
     // If isn't a google chrome browser, obviously don't even try
-    if (chrome) {
-      this.sendMessage({ callback });
-      this.$events.$emit('sessionUpdate', 'connecting');
+    if (this.chrome) {
+      this.requestSession(callback);
     }
   }
 
   stopCasting(callback) {
     // If isn't a google chrome browser, obviously don't even try
-    if (!chrome) {
-      return;
+    if (!this.chrome) { return; }
+
+    this.$events.$emit('sessionstatechanged', 'SESSION_ENDING');
+
+    if (this.session) {
+      this.context.endCurrentSession(true);
+    } else if (callback) {
+      this.stateChangedHandler({
+        sessionState: 'SESSION_ENDED',
+        type: 'sessionstatechanged'
+      });
+
+      callback();
+    }
+  }
+
+  onMessageError(message) {
+    this.log(`onMessageError: ${JSON.stringify(message)}`);
+
+    // Erase the local session in case mismatch with the receiver
+    if (
+      message.code === 'invalid_parameter' ||
+      message.code === 'timeout' ||
+      message.code === 'cancel'
+    ) {
+      this.session = null;
     }
 
-    this.$events.$emit('sessionUpdate', 'disconnecting');
+    if (message.code) {
+      this.$events.$emit('sessionstatechanged', message.code);
+    }
+  }
 
-    // Ugly piece shit of code below, but we need to listen any case during
-    // disconnection in order to provide a rapid and certain connection
-    // from the UI.
-    if (this.session) {
-      this.session.stop((e) => {
-        this.session = null;
-        if (callback) {
-          callback(e);
-        }
-        this.$events.$emit('sessionUpdate', 'disconnected');
-      }, (e) => this.onError(e));
-    } else if (callback) {
-      callback();
-      this.$events.$emit('sessionUpdate', 'disconnected');
+  onMessageSuccess(message) {
+    this.log(`onSuccess: ${JSON.stringify(message)}`);
+
+    if (message.callback) {
+      message.callback();
     }
   }
 }
@@ -200,68 +178,31 @@ class Receiver {
   }
 
   initialize() {
-    if (!window.cast || !window.cast.framework.CastReceiverContext) {
+    if (!window.cast || !window.cast.framework) {
       setTimeout(this.initialize.bind(this), 150);
       return;
     }
 
     const { cast } = window;
 
+    const options = new cast.framework.CastReceiverOptions();
+
+    // Set inactivity at 60 minutes if option maxInactivity is not passed
+    options.maxInactivity = this.params.maxInactivity || 3600000;
+
     const context = cast.framework.CastReceiverContext.getInstance();
-    const playerManager = context.getPlayerManager();
 
-    // intercept the LOAD request to be able to read in a contentId and get data
-    playerManager.setMessageInterceptor(
-      cast.framework.messages.MessageType.LOAD, loadRequestData => {
-        debugger;
-        if (loadRequestData.media && loadRequestData.media.contentId) {
-          debugger;
-        }
-        return loadRequestData;
-      });
+    context.addCustomMessageListener(this.params.appNamespace, (customEvent) => {
+      const dataStringified = JSON.stringify(customEvent.data);
 
-    // listen to all Core Events
-    playerManager.addEventListener(cast.framework.events.category.CORE,
-      event => {
-        console.log(event);
-      });
+      if (customEvent.data.method) {
+        this.$events.$emit('message', dataStringified);
+      }
 
-    debugger
+      this.log(`Message [${customEvent.senderId}]: ${dataStringified}`);
+    });
 
-    // this.castReceiverManager = cast.receiver.CastReceiverManager.getInstance();
-
-    // this.log('Starting Receiver Manager');
-
-    // this.castReceiverManager.onReady = (event) => {
-    //   this.log(`Received Ready event: ${JSON.stringify(event.data)}`);
-    //   this.castReceiverManager.setApplicationState(`${this.params.applicationName} is ready...`);
-    // };
-
-    // this.castReceiverManager.onSenderConnected = (event) => {
-    //   this.log(`Received Sender Connected event: ${event.senderId}`);
-    // };
-
-    // this.castReceiverManager.onSenderDisconnected = (event) => {
-    //   this.log(`Received Sender Disconnected event: ${event.senderId}`);
-    // };
-
-    // this.messageBus = this.castReceiverManager.getCastMessageBus(
-    //   this.params.applicationNamespace,
-    //   cast.receiver.CastMessageBus.MessageType.JSON
-    // );
-
-    // this.messageBus.onMessage = (event) => {
-    //   this.log(`Message [${event.senderId}]: ${event.data}`);
-
-    //   if (event.data.method) {
-    //     this.$events.$emit('message', JSON.stringify(event.data));
-    //   }
-    // };
-
-    // Initialize the CastReceiverManager with an application status message.
-    // this.castReceiverManager.start({ statusText: 'Application is starting' });
-
-    this.log('Receiver Manager started');
+    context.start(options);
   }
 }
 
