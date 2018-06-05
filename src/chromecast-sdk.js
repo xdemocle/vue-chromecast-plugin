@@ -1,14 +1,14 @@
 const { log } = console;
+const { chrome } = window;
 
 class Sender {
   constructor(params) {
     this.log = log;
-    this.session = null;
     this.params = params;
 
     // If isn't a google chrome browser, obviously don't even try to start
     // ChromeCast Web SDK.
-    if (window.chrome) {
+    if (chrome) {
       this.loadScript();
 
       window['__onGCastApiAvailable'] = (isAvailable) => {
@@ -23,106 +23,100 @@ class Sender {
     // Inject chromecast script
     const castScript = document.createElement('script');
 
-    castScript.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js' +
+    castScript.src = '//www.gstatic.com/cv/js/sender/v1/cast_sender.js' +
       '?loadCastFramework=1';
     document.getElementsByTagName('head')[0].appendChild(castScript);
   }
 
   initialize() {
-    this.chrome = window.chrome;
-    this.cast = window.cast;
+    const { cast, chrome } = window;
 
-    if (!this.cast || !this.cast.framework) {
+    if (!cast || !cast.framework) {
       setTimeout(this.initialize.bind(this), 150);
       return;
     }
 
-    this.context = this.cast.framework.CastContext.getInstance();
+    this.context = cast.framework.CastContext.getInstance();
 
-    this.cast.framework.setLoggerLevel(0);
+    cast.framework.setLoggerLevel(0);
 
     // Set Cast options
     this.context.setOptions({
       receiverApplicationId: this.params.appId,
-      autoJoinPolicy: this.chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+      autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
       language: 'en'
     });
 
-    this.context.addEventListener(
-      this.cast.framework.CastContextEventType.CAST_STATE_CHANGED,
-      (response) => this.stateChangedHandler(response)
-    );
-
-    this.context.addEventListener(
-      this.cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
-      (response) => this.stateChangedHandler(response)
-    );
+    this.eventListeners();
   }
 
-  requestSession(callback) {
-    this.context.requestSession().then(() => {
-      if (callback) {
-        callback();
-      }
-    });
+  eventListeners() {
+    const { cast } = window;
+
+    this.context.addEventListener(
+      cast.framework.CastContextEventType.CAST_STATE_CHANGED,
+      (response) => this.stateChangedHandler(response)
+    );
+
+    this.context.addEventListener(
+      cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
+      (response) => this.stateChangedHandler(response)
+    );
   }
 
   stateChangedHandler(response) {
-    if (response.sessionState === 'SESSION_ENDED') {
-      this.session = null;
-    }
-
-    if (response.sessionState === 'SESSION_RESUMED' ||
-        response.sessionState === 'SESSION_STARTED') {
-      this.session = response.session.getSessionObj();
-    }
+    const { cast } = window;
 
     if (response.sessionState) {
       this.$events.$emit(response.type, response.sessionState);
     }
 
     if (response.type === 'sessionstatechanged') {
-      this.log(`[SESSION] ${response.sessionState}: ${this.session && this.session.sessionId}`);
+      const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
+
+      this.log(`[SESSION] ${response.sessionState}: ${castSession && castSession.getSessionId() || '...'}`);
     } else {
       this.log(`[DEBUG] ${response.type}: ${JSON.stringify(response)}`);
     }
   }
 
-  sendMessage(message) {
-    if (this.session) {
-      this.session.sendMessage(
-        this.params.appNamespace,
-        message,
-        () => this.onMessageSuccess(message),
-        (e) => this.onMessageError(e)
-      );
-    } else {
-      this.requestSession(() => {
-        this.session.sendMessage(
-          this.params.appNamespace,
-          message,
-          () => this.onMessageSuccess(message),
-          (e) => this.onMessageError(e)
-        );
-      });
-    }
+  requestSession() {
+    return this.context.requestSession();
   }
 
-  casting(callback) {
+  sendMessage(message) {
+    const { cast } = window;
+    const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
+
+    return castSession.sendMessage(this.params.appNamespace, message)
+      .then(() => this.onMessageSuccess(message))
+      .catch((e) => this.onMessageError(e));
+  }
+
+  casting() {
     // If isn't a google chrome browser, obviously don't even try
-    if (this.chrome) {
-      this.requestSession(callback);
+    if (chrome) {
+      return this.requestSession();
     }
+
+    return {};
   }
 
   stopCasting(callback) {
+    const { cast, chrome } = window;
+
     // If isn't a google chrome browser, obviously don't even try
-    if (!this.chrome) { return; }
+    if (!chrome) { return; }
 
     this.$events.$emit('sessionstatechanged', 'SESSION_ENDING');
 
-    if (this.session) {
-      this.context.endCurrentSession(true);
+    const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
+
+    if (castSession) {
+      // End the session and pass 'true' to indicate
+      // that receiver application should be stopped.
+      castSession.endSession(true);
+      if (callback) { callback(); }
     } else if (callback) {
       this.stateChangedHandler({
         sessionState: 'SESSION_ENDED',
@@ -134,20 +128,11 @@ class Sender {
   }
 
   onMessageError(message) {
-    this.log(`onMessageError: ${JSON.stringify(message)}`);
-
-    // Erase the local session in case mismatch with the receiver
-    if (
-      message.code === 'invalid_parameter' ||
-      message.code === 'timeout' ||
-      message.code === 'cancel'
-    ) {
-      this.session = null;
-    }
-
     if (message.code) {
       this.$events.$emit('sessionstatechanged', message.code);
     }
+
+    this.log(`onMessageError: ${JSON.stringify(message)}`);
   }
 
   onMessageSuccess(message) {
@@ -178,20 +163,29 @@ class Receiver {
   }
 
   initialize() {
-    if (!window.cast || !window.cast.framework) {
+    const { cast } = window;
+
+    if (!cast || !cast.framework) {
       setTimeout(this.initialize.bind(this), 150);
       return;
     }
 
-    const { cast } = window;
+    const options = new cast.framework.CastReceiverOptions();
 
-    // const options = new cast.framework.CastReceiverOptions();
-    //
-    // Set inactivity at 60 minutes if option maxInactivity is not passed
-    // options.maxInactivity = this.params.maxInactivity || 3600000;
+    // Set inactivity at 6 hours if option maxInactivity is not passed
+    options.maxInactivity = this.params.maxInactivity || 21600000;
 
     const context = cast.framework.CastReceiverContext.getInstance();
 
+    this.registerListenersCore(context);
+
+    // Set inactivity at 6 hours if option maxInactivity is not passed
+    context.setInactivityTimeout(this.params.maxInactivity || 21600000);
+
+    context.start(options);
+  }
+
+  registerListenersCore(context) {
     context.addCustomMessageListener(this.params.appNamespace, (customEvent) => {
       const dataStringified = JSON.stringify(customEvent.data);
 
@@ -201,11 +195,6 @@ class Receiver {
 
       this.log(`Message [${customEvent.senderId}]: ${dataStringified}`);
     });
-
-    // Set inactivity at 6 hours if option maxInactivity is not passed
-    context.setInactivityTimeout(this.params.maxInactivity || 21600000);
-
-    context.start();
   }
 }
 
