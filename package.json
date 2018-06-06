@@ -1,6 +1,6 @@
 {
   "name": "vue-chromecast-plugin",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Vue ChromeCast plugin is a simple library using Google ChromeCast Web SDK to cast your website on supported devices and communicate with the remote web interface.",
   "main": "lib/vue-chromecast-plugin.js",
   "scripts": {
