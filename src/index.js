@@ -6,11 +6,11 @@ export default {
     const $chromecast = new Vue();
 
     if (Utils.checkIfChromecast()) {
+      Receiver.prototype.$emit = $chromecast.$emit;
       $chromecast.Receiver = new Receiver(options);
-      $chromecast.Receiver.$emit = $chromecast.$emit;
     } else {
+      Sender.prototype.$emit = $chromecast.$emit;
       $chromecast.Sender = new Sender(options);
-      $chromecast.Sender.$emit = $chromecast.$emit;
     }
 
     // Register the vue plugin
