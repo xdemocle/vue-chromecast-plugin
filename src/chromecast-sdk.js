@@ -68,7 +68,7 @@ class Sender {
     const { cast } = window;
 
     if (response.sessionState) {
-      this.$events.$emit(response.type, response.sessionState);
+      this.$emit(response.type, response.sessionState);
     }
 
     if (response.type === 'sessionstatechanged') {
@@ -108,7 +108,7 @@ class Sender {
     // If isn't a google chrome browser, obviously don't even try
     if (!chrome) { return; }
 
-    this.$events.$emit('sessionstatechanged', 'SESSION_ENDING');
+    this.$emit('sessionstatechanged', 'SESSION_ENDING');
 
     const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
 
@@ -129,7 +129,7 @@ class Sender {
 
   onMessageError(message) {
     if (message.code) {
-      this.$events.$emit('sessionstatechanged', message.code);
+      this.$emit('sessionstatechanged', message.code);
     }
 
     this.log(`onMessageError: ${JSON.stringify(message)}`);
@@ -190,7 +190,7 @@ class Receiver {
       const dataStringified = JSON.stringify(customEvent.data);
 
       if (customEvent.data.method) {
-        this.$events.$emit('message', dataStringified);
+        this.$emit('message', dataStringified);
       }
 
       this.log(`Message [${customEvent.senderId}]: ${dataStringified}`);
