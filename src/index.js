@@ -6,10 +6,10 @@ export default {
     const $chromecast = new Vue();
 
     if (Utils.checkIfChromecast()) {
-      Receiver.prototype.$emit = $chromecast.$emit;
+      Receiver.prototype.$vueEvents = $chromecast;
       $chromecast.Receiver = new Receiver(options);
     } else {
-      Sender.prototype.$emit = $chromecast.$emit;
+      Sender.prototype.$vueEvents = $chromecast;
       $chromecast.Sender = new Sender(options);
     }
 
